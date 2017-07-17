@@ -14,9 +14,9 @@ const unsigned char PUMP_POWER_PIN = 8;
 const unsigned char MOISTURE_READ_PIN = A0;
 const unsigned char LED_PIN = 13;
 
-const byte READING_CACHE_SIZE = 25; // How many to keep locally before sync
+const byte READING_CACHE_SIZE = 20; // How many to keep locally before sync
 
-const unsigned char SLEEP_FOR = 100; // Number of cycles * 8s
+const unsigned char SLEEP_FOR = 50; // Number of cycles * 8s
 
 const unsigned long PUMP_TIMER = 30000 * 1; // How long to keep the pump ON
 const unsigned long PUMP_MOISTURE_TRESHOLD = 500; // Moisture level that triggers pump
@@ -67,15 +67,15 @@ boolean waitForESPSyncCommand() {
 			String line = espSerial.readString();
 			Serial.print("Received: ");
 			Serial.println(line);
-			if (line.startsWith("ERR") || line.startsWith("SUCPST")) {
-				return waitForESPCommandLine() && line.startsWith("SUCPST");
+			if ((line.indexOf("ERR") >= 0) || (line.indexOf("SUCPST") >= 0)) {
+				return (line.indexOf("SUCPST") >= 0);
 			}
 		}
 		Serial.println("Waiting response...");
 		trueDelay(5000);
 	}
 	Serial.println("Command timed out.");
-	return waitForESPCommandLine() && false;
+	return false;
 }
 
 /**
@@ -88,7 +88,7 @@ boolean waitForESPCommandLine() {
 			String line = espSerial.readString();
 			Serial.print("Received: ");
 			Serial.println(line);
-			if (line.startsWith("REQCMD")) {
+			if ((line.indexOf("REQCMD") >= 0)) {
 				Serial.println("All good!");
 				return true;
 			}
@@ -107,48 +107,45 @@ void send2Cloud() {
 	digitalWrite(ESP_POWER_PIN, HIGH);
 
 	if (!waitForESPCommandLine()) {
-		Serial.println("Couldn't connect to ESP. Turning it off.");
-		digitalWrite(ESP_POWER_PIN, LOW);
-		return;
-	}
+		Serial.println("Couldn't connect to ESP. Turning it off and resetting cache.");
+	} else {
+		unsigned long currTime = trueMillis() + sleptFor;
 
-	unsigned long currTime = trueMillis() + sleptFor;
+		// Sync
+		Serial.println("Sending pump logs");
+		for (byte i = 0; i < currPumpIdx; i++) {
+			String data = "PSTLOG:PUMP.A&";
+			data.concat(currTime - pumpTimes[i]);
+			espSerial.println(data);
+			waitForESPSyncCommand();
+		}
 
-	// Sync
-	Serial.println("Sending pump logs");
-	for (byte i = 0; i < currPumpIdx; i++) {
-		String data = "PSTLOG:PUMP.A&";
-		data.concat(currTime - pumpTimes[i]);
-		Serial.print("Sending: " + data);
-		espSerial.println(data);
-		waitForESPSyncCommand();
-	}
+		Serial.println("Sending reading logs");
+		for (byte i = 0; i < currReadingIdx; i++) {
+			// Moisture
+			String data = "PSTRDG:Moisture&";
+			data.concat(moistureLevel[i]);
+			data += "&";
+			data.concat(currTime - readingTimes[i]);
+			espSerial.println(data);
+			waitForESPSyncCommand();
 
-	Serial.println("Sending reading logs");
-	for (byte i = 0; i < currReadingIdx; i++) {
-		// Moisture
-		String data = "PSTRDG:Moisture&";
-		data.concat(moistureLevel[i]);
-		data += "&";
-		data.concat(currTime - readingTimes[i]);
-		espSerial.println(data);
-		waitForESPSyncCommand();
+			// Temperature
+			data = "PSTRDG:Temperature&";
+			data.concat(temperature[i]);
+			data += "&";
+			data.concat(currTime - readingTimes[i]);
+			espSerial.println(data);
+			waitForESPSyncCommand();
 
-		// Temperature
-		data = "PSTRDG:Temperature&";
-		data.concat(temperature[i]);
-		data += "&";
-		data.concat(currTime - readingTimes[i]);
-		espSerial.println(data);
-		waitForESPSyncCommand();
-
-		// Light
-		data = "PSTRDG:Light&";
-		data.concat(light[i]);
-		data += "&";
-		data.concat(currTime - readingTimes[i]);
-		espSerial.println(data);
-		waitForESPSyncCommand();
+			// Light
+			data = "PSTRDG:Light&";
+			data.concat(light[i]);
+			data += "&";
+			data.concat(currTime - readingTimes[i]);
+			espSerial.println(data);
+			waitForESPSyncCommand();
+		}
 	}
 
 	// Turn it off

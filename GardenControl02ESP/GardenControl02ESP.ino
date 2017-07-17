@@ -6,6 +6,17 @@ String password = "Welcome01";
 const char* host = "iot.vieiras.xyz";
 const char* deviceId   = "ESPGarden";
 
+void setup() {
+  pinMode(LED_BUILTIN, OUTPUT);
+
+  Serial.begin(9600);
+  delay(250);
+
+  while (ssid.length() == 0 || password.length() == 0 || !tryToConnectWIFI()) {
+	  captureCredentials();
+  }
+}
+
 boolean tryToConnectWIFI() {
 	WiFi.mode(WIFI_STA);
 
@@ -38,17 +49,6 @@ void captureCredentials() {
 		delay(100);
 	}
 	password = Serial.readString();
-}
-
-void setup() {
-  pinMode(LED_BUILTIN, OUTPUT);
-
-  Serial.begin(9600);
-  delay(250);
-
-  while (ssid.length() == 0 || password.length() == 0 || !tryToConnectWIFI()) {
-	  captureCredentials();
-  }
 }
 
 boolean post(String url) {
@@ -105,11 +105,12 @@ boolean postReading(String sensor, unsigned short value, unsigned long msAgo) {
 }
 
 void loop() {
+  // Give some time to clear the serial
   for (byte i = 0; i < 5; i++) {
 	digitalWrite(LED_BUILTIN, HIGH);
-	delay(50);
+	delay(100);
 	digitalWrite(LED_BUILTIN, LOW);
-	delay(50);
+	delay(100);
   }
 
   Serial.print("REQCMD:");
